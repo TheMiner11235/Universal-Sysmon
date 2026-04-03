@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sysmonitor"
+version = "1.0.0"
+description = "Terminal-based system resource monitor with colored progress bars"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "User"}
+]
+keywords = ["system", "monitor", "resource", "terminal", "cli", "cpu", "gpu", "ram", "disk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "psutil>=5.9.0",
+    "colorama>=0.4.6",
+]
+
+[project.optional-dependencies]
+nvidia = ["nvidia-ml-py>=11.0.0"]
+amd = ["ADLXPybind>=1.4.6; platform_system=='Windows'"]
+amd-linux = ["amdsmi; platform_system=='Linux'"]
+
+[project.scripts]
+sysmonitor = "sysmonitor:main"
+
+[project.urls]
+Homepage = "https://github.com/user/sysmonitor"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sysmonitor*"]
