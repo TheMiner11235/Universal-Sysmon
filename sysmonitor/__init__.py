@@ -217,14 +217,13 @@ class SystemMonitor:
         return f"{b:.1f} TB/s"
     
     def run(self):
-        print('\033[2J\033[H', end='')
+        import sys
         try:
             while True:
                 try:
                     w = min(80, os.get_terminal_size().columns)
                 except:
                     w = 80
-                print('\033[2J\033[H', end='')
                 
                 cpu = self._cpu()
                 gpu_list = self._gpu()
@@ -275,7 +274,11 @@ class SystemMonitor:
                     f"+{'='*(w-2)}+"
                 ]
                 
-                for l in lines: print(f"\r{l}")
+                # Clear screen and rewrite - more compatible approach
+                sys.stdout.write('\033[2J\033[H')
+                for l in lines:
+                    sys.stdout.write(l + '\n')
+                sys.stdout.flush()
                 time.sleep(self.r)
         except KeyboardInterrupt:
             print("\r\nExiting...")
