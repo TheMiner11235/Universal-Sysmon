@@ -2,6 +2,14 @@
 
 Terminal-based system resource monitor with colored progress bars.
 
+## Downloads
+
+| Platform | File | Install |
+|----------|------|---------|
+| Windows | [sysmonitor.exe](https://github.com/TheMiner11235/Universal-Sysmon/releases) | Run directly |
+| macOS | sysmonitor.dmg | Drag to Applications |
+| Linux | sysmonitor.AppImage | `chmod +x && ./sysmonitor` |
+
 ## Features
 
 - CPU usage and clock speed
@@ -14,10 +22,24 @@ Terminal-based system resource monitor with colored progress bars.
 - Cross-platform (Windows, Linux, macOS)
 - Configurable refresh rate
 
-## Installation
+## Quick Start
+
+### Pre-built Executables
+
+Download the executable for your OS from [Releases](https://github.com/TheMiner11235/Universal-Sysmon/releases) and run it.
+
+### From Source
 
 ```bash
-pip install sysmonitor
+# Clone
+git clone https://github.com/TheMiner11235/Universal-Sysmon.git
+cd Universal-Sysmon
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run
+python -m sysmonitor
 ```
 
 ## Usage
@@ -29,28 +51,31 @@ sysmonitor --refresh 0.5      # Slower refresh
 sysmonitor --width 40         # Smaller bars
 ```
 
-## Optional Dependencies
+## Options
 
-For full GPU support:
+- `-r, --refresh` - Refresh rate in seconds (default: 0.1)
+- `-w, --width` - Progress bar width (default: 50)
+- `--theme` - Color theme: dark (default) or light
+
+## Building from Source
 
 ```bash
-# NVIDIA GPUs
-pip install sysmonitor[nvidia]
+# Install build dependencies
+pip install pyinstaller
 
-# AMD GPUs (Windows)
-pip install sysmonitor[amd]
+# Build for current platform
+pyinstaller --onefile --console sysmonitor/__init__.py --name sysmonitor
 
-# AMD GPUs (Linux)
-pip install sysmonitor[amd-linux]
+# Output in dist/ folder
 ```
 
-## Development
+## Python Package Installation
 
 ```bash
-cd system_monitor
-pip install -e .
-pip install -e ".[nvidia,amd,amd-linux]"
-python -m sysmonitor
+pip install sysmonitor                    # Basic
+pip install sysmonitor[nvidia]            # NVIDIA GPU support
+pip install sysmonitor[amd]               # AMD GPU support (Windows)
+pip install sysmonitor[amd-linux]         # AMD GPU support (Linux)
 ```
 
 ## Sample Output
@@ -83,4 +108,4 @@ python -m sysmonitor
 
 ## License
 
-MIT
+MIT - Feel free to use, modify, and distribute!
