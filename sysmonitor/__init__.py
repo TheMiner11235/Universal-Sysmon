@@ -218,6 +218,11 @@ class SystemMonitor:
     
     def run(self):
         import sys
+        # Windows console needs different approach
+        if IS_WINDOWS:
+            os.system('cls')
+        else:
+            sys.stdout.write('\033[2J\033[H')
         try:
             while True:
                 try:
@@ -274,10 +279,12 @@ class SystemMonitor:
                     f"+{'='*(w-2)}+"
                 ]
                 
-                # Clear screen and rewrite - more compatible approach
-                sys.stdout.write('\033[2J\033[H')
-                for l in lines:
-                    sys.stdout.write(l + '\n')
+                if IS_WINDOWS:
+                    os.system('cls')
+                    for l in lines: print(l)
+                else:
+                    sys.stdout.write('\033[2J\033[H')
+                    for l in lines: sys.stdout.write(l + '\n')
                 sys.stdout.flush()
                 time.sleep(self.r)
         except KeyboardInterrupt:
@@ -286,7 +293,7 @@ class SystemMonitor:
 def main():
     import argparse
     p = argparse.ArgumentParser(description='System Resource Monitor')
-    p.add_argument('-r', '--refresh', type=float, default=0.1, help='Refresh rate in seconds')
+    p.add_argument('-r', '--refresh', type=float, default=0.005, help='Refresh rate in seconds (default: 0.005 = 5ms)')
     p.add_argument('-w', '--width', type=int, default=50, help='Progress bar width')
     p.add_argument('--theme', choices=['dark','light'], default='dark', help='Color theme')
     args = p.parse_args()
