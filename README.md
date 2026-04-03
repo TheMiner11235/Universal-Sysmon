@@ -1,4 +1,4 @@
-# SysMonitor
+# Universal-Sysmon
 
 Terminal-based system resource monitor with colored progress bars.
 
