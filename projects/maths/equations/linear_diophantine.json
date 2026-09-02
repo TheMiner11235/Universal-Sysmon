@@ -1,0 +1,15 @@
+{
+  "id": "linear_diophantine",
+  "name": "Linear Diophantine",
+  "description": "Find x, y where a*x + b*y == target",
+  "formula": "a*x + b*y == target",
+  "solver_type": "gpu",
+  "builtin": true,
+  "params": {
+    "a": {"default": 2, "min": 1, "max": 1000, "label": "Coefficient a"},
+    "b": {"default": 3, "min": 1, "max": 1000, "label": "Coefficient b"},
+    "target": {"default": 100, "min": 1, "max": 1000000, "label": "Target value"},
+    "grid_size": {"default": 10000, "min": 100, "max": 100000, "label": "Search range (0 to N)"}
+  },
+  "param_values": {"a": 2, "b": 3, "target": 100, "grid_size": 10000}
+}

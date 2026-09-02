@@ -1,0 +1,13 @@
+{
+  "id": "factorial",
+  "name": "Factorial Finder",
+  "description": "Find n such that n! == target",
+  "formula": "n! == target",
+  "solver_type": "python_loop",
+  "builtin": true,
+  "params": {
+    "target": {"default": 3628800, "min": 1, "max": 9999999999999999, "label": "Target value (n!)"},
+    "max_n": {"default": 20, "min": 1, "max": 50, "label": "Maximum n to search"}
+  },
+  "param_values": {"target": 3628800, "max_n": 20}
+}
