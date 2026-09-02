@@ -36,7 +36,7 @@ Both machines must be on the same Tailscale network:
 
 1. Clone or pull the maths repo:
    ```bash
-   git pull origin 2026-05-23-eqkk
+   git pull origin main
    ```
 
 2. Run the solver:

@@ -87,4 +87,4 @@ Each run writes a JSON report to `results/` (created automatically):
 
 ## Git sync
 
-The project auto-commits/pushes only files under the `maths/` tree (the git repo may live at your home directory). On startup it pulls remote changes; after adding an equation it offers to commit and push.
+The project is its own git repo (remote: `TheMiner11235/maths`). On startup it pulls remote changes; after adding an equation it offers to commit and push.

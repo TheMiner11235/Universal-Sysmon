@@ -16,7 +16,7 @@ On first run it auto-installs deps (numpy, pyopencl, rich, inquirerpy), git-sync
 - `solver.py` - runs equation kernels (OpenCL or NumPy fallback), dispatch logic
 - `kernel_gen.py` - parses pasted formulas (e.g. `x**2 + y**2 == 25`) into OpenCL kernels
 - `results.py` - writes JSON reports to `results/`
-- `git_sync.py` - pulls on startup, commits/pushes only under the `maths/` tree
+- `git_sync.py` - pulls on startup, offers to commit/push when adding equations
 - `gpu_server.py` - Flask HTTP server (desktop) exposing GPU compute over Tailscale; `--install` registers Windows auto-start
 - `remote_client.py` - stdlib-only client (laptop) sending compute jobs to the desktop server
 - `config.json` - `remote_host` (desktop Tailscale IP), `remote_port`, `prefer_remote`
@@ -28,7 +28,8 @@ On first run it auto-installs deps (numpy, pyopencl, rich, inquirerpy), git-sync
 - Desktop runs `gpu_server.py` on port 9753; laptop connects via stdlib `remote_client.py`.
 - Endpoints: `GET /status`, `GET /equations`, `POST /compute` (body: `{equation_id, params}`), `POST /compute_bulk`.
 - `remote_client.is_remote_available()` pings `/status`. Desktop Tailnet IP: `100.76.11.85`, laptop: `100.121.175.35`.
-- CLI menu has "Run on remote GPU"; `main.py` checks remote availability on startup and shows it in the banner.
+- CLI menu has "Run on remote GPU". If `config.json` sets `prefer_remote: true`, the CLI launches the remote flow automatically at startup (falling back to local if unreachable).
+- `main.py` checks remote availability on startup and shows it in the banner.
 - Server auto-installs `flask` on desktop. Server runs the same `solver.run_equation` as local.
 - Falling back: if remote unreachable, CLI falls back to local GPU then NumPy CPU.
 
@@ -57,9 +58,9 @@ Each equation is a JSON file:
 Security: formulas containing `import`, `exec`, `eval`, `open(`, `__`, `lambda` are rejected.
 
 ## Git
-- Repo root is the user home directory; the project lives at `projects/maths`.
-- Git operations are scoped to the `maths/` tree only (`git_sync.py`).
-- Current approach: adding equations offers to commit + push just that file.
+- This project is its own standalone git repo (remote: `TheMiner11235/maths`).
+- `main.py` and the "Sync with git" menu option call `git_sync.py` to pull/push.
+- Adding an equation offers to commit + push just that file.
 
 ## Testing
 No formal test suite; verification is done by running all equations end-to-end:

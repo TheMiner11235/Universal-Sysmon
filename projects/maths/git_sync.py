@@ -24,23 +24,14 @@ def git_root():
     return r.stdout.strip() if r and r.returncode == 0 else None
 
 
-def _scope():
-    root = git_root()
-    here = os.path.dirname(os.path.abspath(__file__))
-    if not root:
-        return None, None
-    rel = os.path.relpath(here, root).replace("\\", "/")
-    return root, rel + "/"
-
-
 def sync_from_remote():
-    r = _run(["fetch", "origin"], workdir=None)
-    if r is None or r.returncode != 0:
-        return {"status": "error", "message": "Could not fetch from origin (are you online?)."}
-    root, scope = _scope()
+    root = git_root()
     if not root:
         return {"status": "error", "message": "Not a git repo."}
-    status = _run(["status", "-sb", "--", scope], workdir=root)
+    r = _run(["fetch", "origin"], workdir=root)
+    if r is None or r.returncode != 0:
+        return {"status": "error", "message": "Could not fetch from origin (are you online?)."}
+    status = _run(["status", "-sb"], workdir=root)
     line = status.stdout.strip().splitlines()[0] if status else ""
     behind = "behind" in line
     ahead = "ahead" in line
