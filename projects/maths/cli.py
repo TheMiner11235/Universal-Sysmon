@@ -11,6 +11,7 @@ from rich.table import Table
 from rich.text import Text
 
 import git_sync
+import remote_client
 import solver
 from device import get_device_info
 from kernel_gen import FormulaError, generate_kernel, parse_formula
@@ -21,6 +22,7 @@ NEON_CYAN = "#00FFFF"
 NEON_MAGENTA = "#FF00FF"
 NEON_YELLOW = "#FFFF00"
 NEON_RED = "#FF0040"
+NEON_BLUE = "#00BFFF"
 BG = "#000000"
 
 console = Console(theme=None)
@@ -148,6 +150,108 @@ def run_an_equation(ctx, queue, info):
         console.print(pt)
 
 
+def run_remote_equation(info):
+    eqs = solver.load_equations()
+    if not eqs:
+        console.print(_t("No equations found in equations/ folder.", NEON_RED))
+        return
+
+    avail, dev_name, dev_type = remote_client.is_remote_available()
+    if not avail:
+        console.print(Panel(
+            _t("Desktop GPU server is not reachable.\n", NEON_RED)
+            + _t("Make sure the desktop is on and gpu_server.py is running.\n", NEON_YELLOW)
+            + _t("Falling back to local solver.", NEON_YELLOW),
+            border_style=NEON_RED,
+        ))
+        return
+
+    console.print(Panel(
+        _t(f"Desktop GPU: {dev_name} ({dev_type})\n", NEON_BLUE)
+        + _t(f"Endpoint: http://{remote_client.get_endpoint()[0]}:{remote_client.get_endpoint()[1]}",
+              NEON_CYAN),
+        border_style=NEON_BLUE,
+        title=_t("REMOTE GPU", NEON_BLUE),
+    ))
+
+    choices = [(f"{e['name']}: {e['description']}", e) for e in eqs]
+    eq = inquirer.select(
+        message="Select an equation to run on remote GPU",
+        choices=choices,
+        instruction="(arrows to move, enter to select)",
+        pointer=">",
+        style=_style(),
+    ).execute()
+
+    params = prompt_params(eq)
+    console.print(_t(f"Sending {eq['name']} to desktop GPU...", NEON_CYAN))
+
+    try:
+        data = remote_client.remote_compute(eq["id"], params)
+    except Exception as e:
+        console.print(Panel(
+            _t(f"Remote compute failed: {e}\n", NEON_RED)
+            + _t("Falling back to local solver.", NEON_YELLOW),
+            border_style=NEON_RED,
+        ))
+        return
+
+    if data.get("error"):
+        console.print(_t(f"Remote error: {data['error']}", NEON_RED))
+        return
+
+    results = data.get("results", [])
+    elapsed = data.get("elapsed", 0)
+    n_combos = data.get("total_combinations", 0)
+    found = len(results)
+    remote_dev = data.get("device", dev_name)
+    remote_type = data.get("device_type", dev_type)
+
+    combo_disp = f"{n_combos:,}" if n_combos else "n/a"
+
+    table = Table(border_style=NEON_BLUE, header_style=f"bold {NEON_YELLOW}")
+    table.add_column("Property", style=NEON_CYAN)
+    table.add_column("Value", style=NEON_GREEN)
+    table.add_row("Device", f"{remote_dev} ({remote_type}) [REMOTE]")
+    table.add_row("Problem", eq["name"])
+    verb = _formula_text(eq, params)
+    table.add_row("Equation", verb)
+    table.add_row("Search space", f"{combo_disp} combinations")
+    table.add_row("Found", f"{found:,} solutions")
+    table.add_row("Elapsed", f"{elapsed:.4f}s")
+    console.print(table)
+
+    payload = {
+        "id": eq["id"],
+        "name": eq["name"],
+        "formula": verb,
+        "device": remote_dev,
+        "device_type": f"{remote_type}_remote",
+        "parameters": params,
+        "total_combinations": n_combos,
+        "solutions_found": found,
+        "elapsed_seconds": elapsed,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "results": results,
+    }
+    path = save_results(payload)
+    console.print(Panel(_t(f"Saved {found} solutions to {os.path.relpath(path)}", NEON_GREEN), border_style=NEON_GREEN))
+
+    print_count = inquirer.confirm(
+        message="Preview solution values in terminal?", default=False,
+        style=_style(),
+    ).execute()
+    if print_count:
+        preview = results[:10]
+        pt = Table(border_style=NEON_BLUE, header_style=f"bold {NEON_YELLOW}")
+        if preview and isinstance(preview[0], dict):
+            for k in preview[0].keys():
+                pt.add_column(k.title(), style=NEON_GREEN)
+            for r in preview:
+                pt.add_row(*[str(v) for v in r.values()])
+        console.print(pt)
+
+
 def _formula_text(eq, params):
     f = eq.get("formula", "")
     if eq.get("builtin") and f == "custom_fib":
@@ -241,6 +345,7 @@ def run(ctx, queue, info, startup_msg=None):
             choices=[
                 Separator("=== MAIN ==="),
                 ("Run an equation", "run"),
+                ("Run on remote GPU", "remote"),
                 ("Add a new equation", "add"),
                 ("View saved results", "results"),
                 Separator("=== GIT ==="),
@@ -253,6 +358,8 @@ def run(ctx, queue, info, startup_msg=None):
 
         if action == "run":
             run_an_equation(ctx, queue, info)
+        elif action == "remote":
+            run_remote_equation(info)
         elif action == "add":
             add_equation()
         elif action == "results":

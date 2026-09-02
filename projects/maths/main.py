@@ -32,6 +32,7 @@ def main():
     import cli
     import device
     import git_sync
+    import remote_client
 
     startup_msg = None
     if git_sync.git_available():
@@ -48,6 +49,18 @@ def main():
     info = device.get_device_info(ctx) if ctx is not None else {"name": dev_name, "type": "NUMPY", "compute_units": 0, "global_mem_mb": 0}
     info["name"] = dev_name
     info["type"] = "GPU" if dev_type == "gpu" else ("CPU" if dev_type == "cpu" else "NUMPY")
+
+    try:
+        remote_ok, remote_name, remote_type = remote_client.is_remote_available()
+    except Exception:
+        remote_ok, remote_name, remote_type = False, "", ""
+
+    if remote_ok:
+        info["remote_available"] = True
+        info["remote_name"] = remote_name
+        info["remote_type"] = remote_type
+        remote_str = f"Remote GPU online: {remote_name}"
+        startup_msg = (startup_msg + " | " if startup_msg else "") + remote_str
 
     cli.run(ctx, queue, info, startup_msg)
 
