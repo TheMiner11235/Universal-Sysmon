@@ -79,19 +79,76 @@ def prompt_params(eq):
     return params
 
 
-def run_an_equation(ctx, queue, info):
+def _select_equation(header):
     eqs = solver.load_equations()
     if not eqs:
         console.print(_t("No equations found in equations/ folder.", NEON_RED))
-        return
+        return None
     choices = [(f"{e['name']}: {e['description']}", e) for e in eqs]
-    eq = inquirer.select(
-        message="Select an equation to run",
+    return inquirer.select(
+        message=header,
         choices=choices,
         instruction="(arrows to move, enter to select)",
         pointer=">",
         style=_style(),
     ).execute()
+
+
+def _render_summary(border, device, device_type, eq, params, n_combos, found, elapsed, remote=False):
+    combo_disp = f"{n_combos:,}" if n_combos else "n/a"
+    table = Table(border_style=border, header_style=f"bold {NEON_YELLOW}")
+    table.add_column("Property", style=NEON_CYAN)
+    table.add_column("Value", style=NEON_GREEN)
+    dev_label = f"{device} ({device_type})" + (" [REMOTE]" if remote else "")
+    table.add_row("Device", dev_label)
+    table.add_row("Problem", eq["name"])
+    table.add_row("Equation", _formula_text(eq, params))
+    table.add_row("Search space", f"{combo_disp} combinations")
+    table.add_row("Found", f"{found:,} solutions")
+    table.add_row("Elapsed", f"{elapsed:.4f}s")
+    return table
+
+
+def _build_payload(eq, params, device, device_type, n_combos, found, elapsed, results):
+    return {
+        "id": eq["id"],
+        "name": eq["name"],
+        "formula": _formula_text(eq, params),
+        "device": device,
+        "device_type": device_type,
+        "parameters": params,
+        "total_combinations": n_combos,
+        "solutions_found": found,
+        "elapsed_seconds": round(elapsed, 4),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "results": results,
+    }
+
+
+def _save_and_maybe_preview(payload, border):
+    results = payload["results"]
+    found = payload["solutions_found"]
+    path = save_results(payload)
+    console.print(Panel(_t(f"Saved {found} solutions to {os.path.relpath(path)}", NEON_GREEN), border_style=NEON_GREEN))
+
+    if inquirer.confirm(
+        message="Preview solution values in terminal?", default=False,
+        style=_style(),
+    ).execute():
+        preview = results[:10]
+        pt = Table(border_style=border, header_style=f"bold {NEON_YELLOW}")
+        if preview and isinstance(preview[0], dict):
+            for k in preview[0].keys():
+                pt.add_column(k.title(), style=NEON_GREEN)
+            for r in preview:
+                pt.add_row(*[str(v) for v in r.values()])
+        console.print(pt)
+
+
+def run_an_equation(ctx, queue, info):
+    eq = _select_equation("Select an equation to run")
+    if eq is None:
+        return
 
     params = prompt_params(eq)
     console.print(_t(f"Solving {eq['name']} on {info['name']} ({info['type']})...", NEON_CYAN))
@@ -103,59 +160,19 @@ def run_an_equation(ctx, queue, info):
         return
 
     found = len(results)
-    grid = params.get("grid_size", "?")
-    combo_disp = f"{n_combos:,}" if n_combos else "n/a"
+    console.print(_render_summary(
+        NEON_MAGENTA, info["name"], info["type"].lower(),
+        eq, params, n_combos, found, elapsed,
+    ))
 
-    table = Table(border_style=NEON_MAGENTA, header_style=f"bold {NEON_YELLOW}")
-    table.add_column("Property", style=NEON_CYAN)
-    table.add_column("Value", style=NEON_GREEN)
-    table.add_row("Device", f"{info['name']} ({info['type']})")
-    table.add_row("Problem", eq["name"])
-    verb = _formula_text(eq, params)
-    table.add_row("Equation", verb)
-    table.add_row("Search space", f"{combo_disp} combinations")
-    table.add_row("Found", f"{found:,} solutions")
-    table.add_row("Elapsed", f"{elapsed:.4f}s")
-    console.print(table)
-
-    payload = {
-        "id": eq["id"],
-        "name": eq["name"],
-        "formula": _formula_text(eq, params),
-        "device": info["name"],
-        "device_type": info["type"].lower(),
-        "parameters": params,
-        "total_combinations": n_combos,
-        "solutions_found": found,
-        "elapsed_seconds": round(elapsed, 4),
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "results": results,
-    }
-
-    path = save_results(payload)
-    console.print(Panel(_t(f"Saved {found} solutions to {os.path.relpath(path)}", NEON_GREEN), border_style=NEON_GREEN))
-
-    print_count = inquirer.confirm(
-        message="Preview solution values in terminal?", default=False,
-        style=_style(),
-    ).execute()
-    if print_count:
-        preview = results[:10]
-        pt = Table(border_style=NEON_MAGENTA, header_style=f"bold {NEON_YELLOW}")
-        if preview and isinstance(preview[0], dict):
-            for k in preview[0].keys():
-                pt.add_column(k.title(), style=NEON_GREEN)
-            for r in preview:
-                pt.add_row(*[str(v) for v in r.values()])
-        console.print(pt)
+    payload = _build_payload(
+        eq, params, info["name"], info["type"].lower(),
+        n_combos, found, elapsed, results,
+    )
+    _save_and_maybe_preview(payload, NEON_MAGENTA)
 
 
 def run_remote_equation(info):
-    eqs = solver.load_equations()
-    if not eqs:
-        console.print(_t("No equations found in equations/ folder.", NEON_RED))
-        return
-
     avail, dev_name, dev_type = remote_client.is_remote_available()
     if not avail:
         console.print(Panel(
@@ -166,6 +183,10 @@ def run_remote_equation(info):
         ))
         return
 
+    eq = _select_equation("Select an equation to run on remote GPU")
+    if eq is None:
+        return
+
     console.print(Panel(
         _t(f"Desktop GPU: {dev_name} ({dev_type})\n", NEON_BLUE)
         + _t(f"Endpoint: http://{remote_client.get_endpoint()[0]}:{remote_client.get_endpoint()[1]}",
@@ -173,15 +194,6 @@ def run_remote_equation(info):
         border_style=NEON_BLUE,
         title=_t("REMOTE GPU", NEON_BLUE),
     ))
-
-    choices = [(f"{e['name']}: {e['description']}", e) for e in eqs]
-    eq = inquirer.select(
-        message="Select an equation to run on remote GPU",
-        choices=choices,
-        instruction="(arrows to move, enter to select)",
-        pointer=">",
-        style=_style(),
-    ).execute()
 
     params = prompt_params(eq)
     console.print(_t(f"Sending {eq['name']} to desktop GPU...", NEON_CYAN))
@@ -207,64 +219,31 @@ def run_remote_equation(info):
     remote_dev = data.get("device", dev_name)
     remote_type = data.get("device_type", dev_type)
 
-    combo_disp = f"{n_combos:,}" if n_combos else "n/a"
+    console.print(_render_summary(
+        NEON_BLUE, remote_dev, remote_type,
+        eq, params, n_combos, found, elapsed, remote=True,
+    ))
 
-    table = Table(border_style=NEON_BLUE, header_style=f"bold {NEON_YELLOW}")
-    table.add_column("Property", style=NEON_CYAN)
-    table.add_column("Value", style=NEON_GREEN)
-    table.add_row("Device", f"{remote_dev} ({remote_type}) [REMOTE]")
-    table.add_row("Problem", eq["name"])
-    verb = _formula_text(eq, params)
-    table.add_row("Equation", verb)
-    table.add_row("Search space", f"{combo_disp} combinations")
-    table.add_row("Found", f"{found:,} solutions")
-    table.add_row("Elapsed", f"{elapsed:.4f}s")
-    console.print(table)
-
-    payload = {
-        "id": eq["id"],
-        "name": eq["name"],
-        "formula": verb,
-        "device": remote_dev,
-        "device_type": f"{remote_type}_remote",
-        "parameters": params,
-        "total_combinations": n_combos,
-        "solutions_found": found,
-        "elapsed_seconds": elapsed,
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "results": results,
-    }
-    path = save_results(payload)
-    console.print(Panel(_t(f"Saved {found} solutions to {os.path.relpath(path)}", NEON_GREEN), border_style=NEON_GREEN))
-
-    print_count = inquirer.confirm(
-        message="Preview solution values in terminal?", default=False,
-        style=_style(),
-    ).execute()
-    if print_count:
-        preview = results[:10]
-        pt = Table(border_style=NEON_BLUE, header_style=f"bold {NEON_YELLOW}")
-        if preview and isinstance(preview[0], dict):
-            for k in preview[0].keys():
-                pt.add_column(k.title(), style=NEON_GREEN)
-            for r in preview:
-                pt.add_row(*[str(v) for v in r.values()])
-        console.print(pt)
+    payload = _build_payload(
+        eq, params, remote_dev, f"{remote_type}_remote",
+        n_combos, found, elapsed, results,
+    )
+    _save_and_maybe_preview(payload, NEON_BLUE)
 
 
 def _formula_text(eq, params):
-    f = eq.get("formula", "")
-    if eq.get("builtin") and f == "custom_fib":
+    kind = solver.eq_kind(eq)
+    if kind == "fib":
         return f"fib(x, y) reaches {params.get('target')} in {params.get('steps')} steps"
-    if eq.get("builtin") and f.startswith("a*x + b*y"):
+    if kind == "linear":
         return f"{params.get('a')}x + {params.get('b')}y == {params.get('target')}"
-    if eq.get("builtin") and f == "x*x + y*y == target":
+    if kind == "pythag":
         return f"x^2 + y^2 == {params.get('target')}"
-    if eq.get("builtin") and f.startswith("a*x*x + b*x + c"):
+    if kind == "quadratic":
         return f"{params.get('a')}x^2 + {params.get('b')}x + {params.get('c')} == 0"
-    if f == "n! == target":
+    if kind == "factorial":
         return f"n! == {params.get('target')}"
-    return eq.get("custom_formula", f)
+    return eq.get("custom_formula", eq.get("formula", ""))
 
 
 def add_equation():
@@ -315,7 +294,7 @@ def add_equation():
     if commit:
         ok, msg = git_sync.push_file(path, f"add equation: {name}")
         if ok:
-            console.print(Panel(_t("Pushed to git successfullly.", NEON_GREEN), border_style=NEON_GREEN))
+            console.print(Panel(_t("Pushed to git successfully.", NEON_GREEN), border_style=NEON_GREEN))
         else:
             console.print(Panel(_t(f"Could not push: {msg}", NEON_RED), border_style=NEON_RED))
 
@@ -339,6 +318,16 @@ def run(ctx, queue, info, startup_msg=None):
     banner()
     if startup_msg:
         console.print(_t(startup_msg, NEON_YELLOW))
+
+    if remote_client.prefer_remote():
+        console.print(Panel(
+            _t("prefer_remote is enabled; launching remote GPU flow.\n", NEON_BLUE)
+            + _t("Choose a remote action, or Quit to reach the main menu.", NEON_CYAN),
+            border_style=NEON_BLUE,
+            title=_t("REMOTE FIRST", NEON_BLUE),
+        ))
+        run_remote_equation(info)
+
     while True:
         action = inquirer.select(
             message="Main menu",

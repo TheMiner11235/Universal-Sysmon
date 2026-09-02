@@ -36,6 +36,34 @@ def get_equation(eq_id):
     return None
 
 
+def eq_kind(eq):
+    """Classify an equation by its JSON formula. Single source of truth for
+    the formula-string mapping used by the GPU dispatch, NumPy fallback, and
+    CLI display text."""
+    f = eq.get("formula", "")
+    if eq.get("solver_type") == "python_loop":
+        return "factorial"
+    if eq.get("builtin"):
+        if f == "custom_fib":
+            return "fib"
+        if f.startswith("a*x + b*y"):
+            return "linear"
+        if f == "x*x + y*y == target":
+            return "pythag"
+        if f.startswith("a*x*x + b*x + c"):
+            return "quadratic"
+    return "custom"
+
+
+def fib_coeffs(steps):
+    """Fib-style coefficients: cx*x + cy*y is the value at `steps` from seeds x,y."""
+    coeffs = [0, 1]
+    while len(coeffs) <= steps:
+        coeffs.append(coeffs[-1] + coeffs[-2])
+    cx = coeffs[-2] if len(coeffs) > 2 else 0
+    return cx, coeffs[-1]
+
+
 def _build_seed_arrays(grid_size, signed=False):
     if signed:
         stop = grid_size // 2
@@ -53,18 +81,14 @@ def _run_gpu_kernel(ctx, queue, kernel_code, variables, x_seeds, y_seeds):
     n = x_seeds.size
     output_results = np.zeros(n, dtype=np.int32)
     mf = cl.mem_flags
-    bufs = []
     args = []
     if "x" in variables:
         x_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x_seeds)
-        bufs.append(x_buf)
         args.append(x_buf)
     if "y" in variables:
         y_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y_seeds)
-        bufs.append(y_buf)
         args.append(y_buf)
     out_buf = cl.Buffer(ctx, mf.WRITE_ONLY, output_results.nbytes)
-    bufs.append(out_buf)
     args.append(out_buf)
 
     prg = cl.Program(ctx, kernel_code).build()
@@ -77,10 +101,7 @@ def _run_gpu_kernel(ctx, queue, kernel_code, variables, x_seeds, y_seeds):
 
 def _fibonacci_kernel(steps):
     steps = int(steps)
-    coeffs = [0, 1]  # fib recurrence: fib(n) with fib(0)=0, fib(1)=1
-    while len(coeffs) <= steps:
-        coeffs.append(coeffs[-1] + coeffs[-2])
-    cx, cy = coeffs[-2], coeffs[-1]
+    cx, cy = fib_coeffs(steps)
     return f"""
 __kernel void check_eq(__global const int* x, __global const int* y, __global int* out) {{
     int i = get_global_id(0);
@@ -98,12 +119,6 @@ def _solve_fibonacci(eq, params, ctx, queue):
     steps = int(params["steps"])
     grid_size = int(params["grid_size"])
     x_seeds, y_seeds = _build_seed_arrays(grid_size)
-
-    coeffs = [0, 1]
-    while len(coeffs) <= steps:
-        coeffs.append(coeffs[-1] + coeffs[-2])
-    cx = coeffs[-2] if len(coeffs) > 2 else 0
-    cy = coeffs[-1]
 
     code = _fibonacci_kernel(steps).replace("TARGET_PLACEHOLDER", str(target))
     match_idx, x, y = _run_gpu_kernel(ctx, queue, code, ["x", "y"], x_seeds, y_seeds)
@@ -187,19 +202,11 @@ __kernel void check_eq(__global const int* x, __global int* out) {{
     }}
 }}
 """
-    n = x_seeds.size
-    output_results = np.zeros(n, dtype=np.int32)
-    mf = cl.mem_flags
-    x_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x_seeds)
-    out_buf = cl.Buffer(ctx, mf.WRITE_ONLY, output_results.nbytes)
-    prg = cl.Program(ctx, code).build()
-    prg.check_eq(queue, (n,), None, x_buf, out_buf)
-    cl.enqueue_copy(queue, output_results, out_buf)
-    match_idx = np.where(output_results == 1)[0]
+    match_idx, x_arr, _ = _run_gpu_kernel(ctx, queue, code, ["x"], x_seeds, None)
     results = []
     for i in match_idx:
-        xv = int(x_seeds[i])
-        results.append({"x": xv, "value": a * xv * xv + b * xv + c})
+        xv = int(x_arr[i])
+        results.append({"x": xv, "value": int(a * xv * xv + b * xv + c)})
     return results
 
 
@@ -258,16 +265,12 @@ def _try_eval(formula_expr, x, y):
 
 def _numpy_solve(eq, params):
     grid_size = int(params["grid_size"])
-    f = eq.get("formula", "")
+    kind = eq_kind(eq)
 
-    if f == "custom_fib":
+    if kind == "fib":
         target = int(params["target"])
         steps = int(params["steps"])
-        coeffs = [0, 1]
-        while len(coeffs) <= steps:
-            coeffs.append(coeffs[-1] + coeffs[-2])
-        cx = coeffs[-2] if len(coeffs) > 2 else 0
-        cy = coeffs[-1]
+        cx, cy = fib_coeffs(steps)
         rows = _chunked_matches(lambda X, Y: (cx * X + cy * Y) == target, grid_size)
         out = []
         for xv, yv in rows:
@@ -280,7 +283,7 @@ def _numpy_solve(eq, params):
             out.append({"x": xv, "y": yv, "sequence": seq})
         return out
 
-    if f.startswith("a*x + b*y"):
+    if kind == "linear":
         a, b = int(params["a"]), int(params["b"])
         target = int(params["target"])
         rows = _chunked_matches(lambda X, Y: (a * X + b * Y) == target, grid_size)
@@ -290,7 +293,7 @@ def _numpy_solve(eq, params):
             for x, y in rows
         ]
 
-    if f == "x*x + y*y == target":
+    if kind == "pythag":
         target = int(params["target"])
         rows = _chunked_matches(lambda X, Y: (X * X + Y * Y) == target, grid_size)
         out = []
@@ -299,7 +302,7 @@ def _numpy_solve(eq, params):
             out.append({"x": x, "y": y, "c": c, "formula": f"{x}^2 + {y}^2 = {c}^2"})
         return out
 
-    if f.startswith("a*x*x + b*x + c"):
+    if kind == "quadratic":
         a, b, c = int(params["a"]), int(params["b"]), int(params["c"])
         xr = np.arange(-grid_size, grid_size + 1, dtype=np.int64)
         mask = (a * xr * xr + b * xr + c) == 0
@@ -342,29 +345,29 @@ def run_equation(eq, params, ctx, queue):
         results = _numpy_solve(eq, params)
         if isinstance(results, tuple):
             results, error = results
+        kind = eq_kind(eq)
         gs = int(params.get("grid_size", 0))
         n_combos = gs * gs if gs else 0
-        if isinstance(eq.get("custom_formula"), str):
-            pass
-    elif eq.get("builtin") and eq["formula"] == "custom_fib":
-        results = _solve_fibonacci(eq, params, ctx, queue)
-        gs = int(params["grid_size"])
-        n_combos = gs * gs
-    elif eq.get("builtin") and eq["formula"].startswith("a*x + b*y"):
-        results = _solve_linear(eq, params, ctx, queue)
-        gs = int(params["grid_size"])
-        n_combos = gs * gs
-    elif eq.get("builtin") and eq["formula"] == "x*x + y*y == target":
-        results = _solve_pythagorean(eq, params, ctx, queue)
-        gs = int(params["grid_size"])
-        n_combos = gs * gs
-    elif eq.get("builtin") and eq["formula"].startswith("a*x*x + b*x + c"):
-        results = _solve_quadratic(eq, params, ctx, queue)
-        n_combos = 2 * int(params["grid_size"]) + 1
+        if kind == "quadratic":
+            n_combos = 2 * gs + 1
     else:
-        results, error = _solve_custom(eq, params, ctx, queue)
+        kind = eq_kind(eq)
         gs = int(params["grid_size"])
-        n_combos = gs * gs
+        if kind == "fib":
+            results = _solve_fibonacci(eq, params, ctx, queue)
+            n_combos = gs * gs
+        elif kind == "linear":
+            results = _solve_linear(eq, params, ctx, queue)
+            n_combos = gs * gs
+        elif kind == "pythag":
+            results = _solve_pythagorean(eq, params, ctx, queue)
+            n_combos = gs * gs
+        elif kind == "quadratic":
+            results = _solve_quadratic(eq, params, ctx, queue)
+            n_combos = 2 * gs + 1
+        else:
+            results, error = _solve_custom(eq, params, ctx, queue)
+            n_combos = gs * gs
 
     elapsed = time.perf_counter() - start
     return results, elapsed, n_combos, error

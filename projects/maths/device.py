@@ -10,25 +10,23 @@ AMD_NAMES = {
     "gfx1010": "AMD RX 5700 series",
     "gfx1031": "AMD RX 6700 XT",
 }
-INTEL_NAMES = {
-    "gfx1010": "Intel Arc/iGPU",
-}
 
 
 def friendly_name(raw):
     raw = raw.strip()
     lk = raw.lower()
-    if lk in AMD_NAMES:
-        return AMD_NAMES[lk]
-    if lk in INTEL_NAMES:
-        return INTEL_NAMES[lk]
-    return raw
+    return AMD_NAMES.get(lk, raw)
+
+
+# Substrings that identify an integrated GPU (matches _device_key's heuristic).
+_INTEGRATED = ("gfx902", "gfx906", "gfx1001", "gfx1003", "iray", "vega",
+               "renoir", "cézanne", "raphael", "phoenix", "strix", "gfx10", "gfx11")
 
 
 def _device_key(device):
     if device.type & cl.device_type.GPU:
-        gfx = device.name.strip().lower()
-        integrated = any(k in gfx for k in ("gfx902", "gfx906", "gfx1001", "gfx1003", "gfx1010", "iray", "vega", "renoir", "cézanne", "raphael", "phoenix", "strix", "gfx10", "gfx11"))
+        name = device.name.strip().lower()
+        integrated = any(k in name for k in _INTEGRATED)
         return (0 if not integrated else 1, 0, 0)
     if device.type & cl.device_type.CPU:
         return (2, 0, 0)

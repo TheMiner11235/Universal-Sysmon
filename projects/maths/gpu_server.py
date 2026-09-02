@@ -47,6 +47,8 @@ GPU_QUEUE = None
 DEVICE_NAME = ""
 DEVICE_TYPE = ""
 
+_start_time = time.time()
+
 
 def _init_gpu():
     global GPU_CTX, GPU_QUEUE, DEVICE_NAME, DEVICE_TYPE
@@ -75,6 +77,27 @@ def equations():
                      "params": e.get("params", {})} for e in eqs])
 
 
+def _compute_job(eq_id, params):
+    eq = solver.get_equation(eq_id)
+    if eq is None:
+        return {"error": f"Unknown equation: {eq_id}"}, 404
+    try:
+        results, elapsed, n_combos, error = solver.run_equation(
+            eq, params, GPU_CTX, GPU_QUEUE
+        )
+        return ({
+            "results": results,
+            "elapsed": round(elapsed, 4),
+            "total_combinations": n_combos,
+            "solutions_found": len(results),
+            "device": DEVICE_NAME,
+            "device_type": DEVICE_TYPE,
+            "error": error,
+        }, 200)
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 @app.route("/compute", methods=["POST"])
 def compute():
     try:
@@ -84,27 +107,8 @@ def compute():
 
     eq_id = data.get("equation_id")
     params = data.get("params", {})
-
-    eq = solver.get_equation(eq_id)
-    if eq is None:
-        return jsonify({"error": f"Unknown equation: {eq_id}"}), 404
-
-    try:
-        results, elapsed, n_combos, error = solver.run_equation(
-            eq, params, GPU_CTX, GPU_QUEUE
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    return jsonify({
-        "results": results,
-        "elapsed": round(elapsed, 4),
-        "total_combinations": n_combos,
-        "solutions_found": len(results),
-        "device": DEVICE_NAME,
-        "device_type": DEVICE_TYPE,
-        "error": error,
-    })
+    payload, status = _compute_job(eq_id, params)
+    return jsonify(payload), status
 
 
 @app.route("/compute_bulk", methods=["POST"])
@@ -117,26 +121,8 @@ def compute_bulk():
     jobs = data.get("jobs", [])
     out = []
     for job in jobs:
-        eq_id = job.get("equation_id")
-        params = job.get("params", {})
-        eq = solver.get_equation(eq_id)
-        if eq is None:
-            out.append({"error": f"Unknown equation: {eq_id}"})
-            continue
-        try:
-            results, elapsed, n_combos, error = solver.run_equation(
-                eq, params, GPU_CTX, GPU_QUEUE
-            )
-            out.append({
-                "results": results,
-                "elapsed": round(elapsed, 4),
-                "total_combinations": n_combos,
-                "solutions_found": len(results),
-                "error": error,
-            })
-        except Exception as e:
-            out.append({"error": str(e)})
-
+        payload, _status = _compute_job(job.get("equation_id"), job.get("params", {}))
+        out.append(payload)
     return jsonify({"results": out})
 
 
@@ -181,23 +167,14 @@ def main():
 
 def _install_autostart():
     python_exe = sys.executable
-    server_script = os.path.abspath(__file__)
-    task_name = "MathGpuServer"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    ps1 = os.path.join(script_dir, "setup_autostart.ps1")
 
     ps_cmd = (
-        f'$action = New-ScheduledTaskAction -Execute "{python_exe}" '
-        f'-Argument "{server_script}" -WorkingDirectory "{os.path.dirname(server_script)}"\n'
-        f'$trigger = New-ScheduledTaskTrigger -AtLogon\n'
-        f'$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries '
-        f'-DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 '
-        f'-RestartInterval (New-TimeSpan -Minutes 1)\n'
-        f'Register-ScheduledTask -TaskName "{task_name}" -Action $action '
-        f'-Trigger $trigger -Settings $settings -Force\n'
-        f'Write-Host "Task {task_name} registered. It will start on next login."'
+        f'-ExecutionPolicy Bypass -File "{ps1}" -PythonExe "{python_exe}"'
     )
-
     result = subprocess.run(
-        ["powershell", "-Command", ps_cmd],
+        ["powershell", "-NoProfile", "-Command", ps_cmd],
         capture_output=True, text=True
     )
     print(result.stdout.strip())

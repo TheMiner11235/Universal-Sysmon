@@ -1,9 +1,15 @@
 # setup_autostart.ps1
 # Run this on your DESKTOP to register the GPU server as a Windows auto-start task.
 # It will launch gpu_server.py every time you log in.
+#
+# Options:
+#   -PythonExe <path>   Full path to the Python executable (defaults to `python` on PATH)
+
+param(
+    [string]$PythonExe = "python"
+)
 
 $TaskName = "MathGpuServer"
-$PythonExe = python
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServerScript = Join-Path $ScriptDir "gpu_server.py"
 

@@ -28,37 +28,29 @@ def _load_config():
                 "prefer_remote": False}
 
 
-def _save_config(cfg):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-
-
 def get_endpoint():
     cfg = _load_config()
     return cfg.get("remote_host", DEFAULT_HOST), cfg.get("remote_port", DEFAULT_PORT)
 
 
-def is_remote_available():
+def _status_data():
     host, port = get_endpoint()
     url = f"http://{host}:{port}/status"
+    req = urllib.request.Request(url, method="GET")
+    resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT)
+    return json.loads(resp.read().decode())
+
+
+def is_remote_available():
     try:
-        req = urllib.request.Request(url, method="GET")
-        resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT)
-        data = json.loads(resp.read().decode())
+        data = _status_data()
         return True, data.get("device", "unknown"), data.get("device_type", "unknown")
     except Exception:
         return False, "", ""
 
 
-def remote_status():
-    host, port = get_endpoint()
-    url = f"http://{host}:{port}/status"
-    try:
-        req = urllib.request.Request(url, method="GET")
-        resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT)
-        return json.loads(resp.read().decode())
-    except Exception as e:
-        return {"error": str(e)}
+def prefer_remote():
+    return bool(_load_config().get("prefer_remote", False))
 
 
 def remote_compute(eq_id, params):
@@ -72,18 +64,3 @@ def remote_compute(eq_id, params):
     )
     resp = urllib.request.urlopen(req, timeout=COMPUTE_TIMEOUT)
     return json.loads(resp.read().decode())
-
-
-def remote_equations():
-    host, port = get_endpoint()
-    url = f"http://{host}:{port}/equations"
-    req = urllib.request.Request(url, method="GET")
-    resp = urllib.request.urlopen(req, timeout=CONNECT_TIMEOUT)
-    return json.loads(resp.read().decode())
-
-
-def update_config(**kwargs):
-    cfg = _load_config()
-    cfg.update(kwargs)
-    _save_config(cfg)
-    return cfg

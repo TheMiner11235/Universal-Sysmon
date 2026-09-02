@@ -33,7 +33,7 @@ def _scope():
     return root, rel + "/"
 
 
-def sync_from_remote(logger=print):
+def sync_from_remote():
     r = _run(["fetch", "origin"], workdir=None)
     if r is None or r.returncode != 0:
         return {"status": "error", "message": "Could not fetch from origin (are you online?)."}
@@ -58,7 +58,7 @@ def sync_from_remote(logger=print):
     return {"status": "clean", "message": "Up to date."}
 
 
-def push_file(filepath, message, logger=print):
+def push_file(filepath, message):
     root = git_root()
     if not root:
         return False, "Not a git repo."
@@ -71,11 +71,3 @@ def push_file(filepath, message, logger=print):
     if p.returncode != 0:
         return False, f"git push failed: {p.stderr.strip()}"
     return True, "Pushed successfully."
-
-
-def status_short():
-    root = git_root()
-    if not root:
-        return "not a git repo"
-    s = _run(["status", "-sb"], workdir=root)
-    return s.stdout.strip().splitlines()[0] if s else "unknown"

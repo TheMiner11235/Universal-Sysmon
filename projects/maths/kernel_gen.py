@@ -53,7 +53,6 @@ def parse_formula(formula):
 
 def _to_cl(expr, variables):
     expr = expr.strip()
-    expr = re.sub(r"\b([0-9]+)\b", r"\1", expr)
 
     tokens = re.findall(r"\*\*|[A-Za-z_][A-Za-z0-9_]*|\d+|[+\-*/()=]", expr)
     out = []
@@ -84,10 +83,6 @@ def generate_kernel(formula):
 
     cl_lhs = _to_cl(lhs, variables)
     cl_rhs = _to_cl(rhs, variables)
-    try:
-        cl_rhs = str(int(eval(rhs)))
-    except Exception:
-        pass
 
     decls = []
     if "x" in variables:

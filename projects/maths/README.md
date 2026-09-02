@@ -27,7 +27,7 @@ On startup it prefers a discrete GPU over an integrated one when both exist.
 
 ## Equation files
 
-Each equation is a JSON file in `equations/` (bulit-ins at the top level, added ones in `equations/custom/`):
+Each equation is a JSON file in `equations/` (built-ins at the top level, added ones in `equations/custom/`):
 
 ```json
 {

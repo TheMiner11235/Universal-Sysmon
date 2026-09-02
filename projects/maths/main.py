@@ -12,7 +12,7 @@ def _ensure_deps():
         try:
             importlib.import_module(module)
         except ImportError:
-            missing.append(REQUIRED[module].split("==")[0] if "==" in REQUIRED[module] else REQUIRED[module])
+            missing.append(REQUIRED[module])
 
     if not missing:
         return
@@ -63,7 +63,5 @@ def main():
         startup_msg = (startup_msg + " | " if startup_msg else "") + remote_str
 
     cli.run(ctx, queue, info, startup_msg)
-
-
 if __name__ == "__main__":
     main()
