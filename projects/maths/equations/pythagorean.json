@@ -1,0 +1,13 @@
+{
+  "id": "pythagorean",
+  "name": "Pythagorean Triples",
+  "description": "Find a, b where a^2 + b^2 == c^2 (compute c, print triple)",
+  "formula": "x*x + y*y == target",
+  "solver_type": "gpu",
+  "builtin": true,
+  "params": {
+    "target": {"default": 1000000, "min": 1, "max": 1000000000, "label": "c^2 (limit on c)"},
+    "grid_size": {"default": 10000, "min": 100, "max": 100000, "label": "Search range (0 to N)"}
+  },
+  "param_values": {"target": 1000000, "grid_size": 10000}
+}
